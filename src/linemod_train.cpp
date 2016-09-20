@@ -53,7 +53,7 @@
 #include <object_recognition_renderer/utils.h>
 
 #if LINEMOD_VIZ_IMG
-  #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/highgui/highgui.hpp>
 #endif
 
 using ecto::tendrils;
@@ -84,7 +84,7 @@ namespace ecto_linemod
     {
       inputs.declare(&Trainer::json_db_, "json_db", "The DB parameters", "{}").required(true);
       inputs.declare(&Trainer::object_id_, "object_id",
-        "The object id, to associate this model with.").required(true);
+                     "The object id, to associate this model with.").required(true);
       inputs.declare(&Trainer::visualize_, "visualize", "If True, visualize the output.", true);
 
       outputs.declare(&Trainer::detector_, "detector", "The LINE-MOD detector");
@@ -111,135 +111,159 @@ namespace ecto_linemod
       //or_json::mValue submethod = object_recognition_core::to_json(*json_submethod_);
     }
 
-  int process(const tendrils& inputs, const tendrils& outputs) {
-    // Get the document for the object_id_ from the DB
-    object_recognition_core::db::ObjectDbPtr db =
+    int process(const tendrils& inputs, const tendrils& outputs)
+    {
+      // Get the document for the object_id_ from the DB
+      object_recognition_core::db::ObjectDbPtr db =
         object_recognition_core::db::ObjectDbParameters(*json_db_).generateDb();
-    object_recognition_core::db::Documents documents =
+      object_recognition_core::db::Documents documents =
         object_recognition_core::db::ModelDocuments(db,
             std::vector<object_recognition_core::db::ObjectId>(1, *object_id_),
             "mesh");
-    if (documents.empty()) {
-      std::cerr << "Skipping object id \"" << *object_id_ << "\" : no mesh in the DB" << std::endl;
-      return ecto::OK;
-    }
-
-    // Get the list of _attachments and figure out the original one
-    object_recognition_core::db::Document document = documents[0];
-    std::vector<std::string> attachments_names = document.attachment_names();
-    std::string mesh_path;
-    std::vector<std::string> possible_names(2);
-    possible_names[0] = "original";
-    possible_names[1] = "mesh";
-    for (size_t i = 0; i < possible_names.size() && mesh_path.empty(); ++i) {
-      BOOST_FOREACH(const std::string& attachment_name, attachments_names) {
-        if (attachment_name.find(possible_names[i]) != 0)
-          continue;
-        // Create a temporary file
-        char mesh_path_tmp[L_tmpnam];
-        tmpnam(mesh_path_tmp);
-        mesh_path = std::string(mesh_path_tmp) + attachment_name.substr(possible_names[i].size());
-
-        // Load the mesh and save it to the temporary file
-        std::ofstream mesh_file;
-        mesh_file.open(mesh_path.c_str());
-        document.get_attachment_stream(attachment_name, mesh_file);
-        mesh_file.close();
+      if (documents.empty())
+      {
+        std::cerr << "Skipping object id \"" << *object_id_ << "\" : no mesh in the DB" << std::endl;
+        return ecto::OK;
       }
-    }
 
-    cv::Ptr<cv::linemod::Detector> detector_ptr = cv::linemod::getDefaultLINEMOD();
-    *detector_ = *detector_ptr;
+      // Get the list of _attachments and figure out the original one
+      object_recognition_core::db::Document document = documents[0];
+      if(document.has_field("Skip"))
+      {
+        int skip = document.get_field<int>("Skip");
+		
+		/* Skip the object if "skip" is set */
+        if(skip!=0)
+        {
+          std::cout<<"This object is a variation of a parent object: Skipping "<<std::endl;
+          return ecto::OK;
+        }
+        else
+        {
+          std::vector<std::string> attachments_names = document.attachment_names();
+          std::string mesh_path;
+          std::vector<std::string> possible_names(2);
+          possible_names[0] = "original";
+          possible_names[1] = "mesh";
+          for (size_t i = 0; i < possible_names.size() && mesh_path.empty(); ++i)
+          {
+            BOOST_FOREACH(const std::string& attachment_name, attachments_names)
+            {
+              if (attachment_name.find(possible_names[i]) != 0)
+                continue;
+              // Create a temporary file
+              char mesh_path_tmp[L_tmpnam];
+              tmpnam(mesh_path_tmp);
+              mesh_path = std::string(mesh_path_tmp) + attachment_name.substr(possible_names[i].size());
 
-    // Define the display
-    //assign the parameters of the renderer
-    *renderer_n_points_ = *param_n_points_;
-    *renderer_angle_step_ = *param_angle_step_;
-    *renderer_radius_min_ = *param_radius_min_;
-    *renderer_radius_max_ = *param_radius_max_;
-    *renderer_radius_step_ = *param_radius_step_;
-    *renderer_width_ = *param_width_;
-    *renderer_height_ = *param_height_;
-    *renderer_near_ = *param_near_;
-    *renderer_far_ = *param_far_;
-    *renderer_focal_length_x_ = *param_focal_length_x_;
-    *renderer_focal_length_y_ = *param_focal_length_y_;
+              // Load the mesh and save it to the temporary file
+              std::ofstream mesh_file;
+              mesh_file.open(mesh_path.c_str());
+              document.get_attachment_stream(attachment_name, mesh_file);
+              mesh_file.close();
+            }
+          }
 
-    // the model name can be specified on the command line.
-    if (mesh_path.empty())
-    {
-      std::remove(mesh_path.c_str());
-      std::cerr << "The mesh path is empty for the object id \"" << *object_id_<< std::endl;
-      return ecto::OK;
-    }
+          cv::Ptr<cv::linemod::Detector> detector_ptr = cv::linemod::getDefaultLINEMOD();
+          *detector_ = *detector_ptr;
 
-    Renderer3d renderer = Renderer3d(mesh_path);
-    renderer.set_parameters(*renderer_width_, *renderer_height_, *renderer_focal_length_x_,
-                            *renderer_focal_length_y_, *renderer_near_, *renderer_far_);
+          // Define the display
+          //assign the parameters of the renderer
+          *renderer_n_points_ = *param_n_points_;
+          *renderer_angle_step_ = *param_angle_step_;
+          *renderer_radius_min_ = *param_radius_min_;
+          *renderer_radius_max_ = *param_radius_max_;
+          *renderer_radius_step_ = *param_radius_step_;
+          *renderer_width_ = *param_width_;
+          *renderer_height_ = *param_height_;
+          *renderer_near_ = *param_near_;
+          *renderer_far_ = *param_far_;
+          *renderer_focal_length_x_ = *param_focal_length_x_;
+          *renderer_focal_length_y_ = *param_focal_length_y_;
 
-    RendererIterator renderer_iterator = RendererIterator(&renderer, *renderer_n_points_);
-    //set the RendererIterator parameters
-    renderer_iterator.angle_step_ = *renderer_angle_step_;
-    renderer_iterator.radius_min_ = float(*renderer_radius_min_);
-    renderer_iterator.radius_max_ = float(*renderer_radius_max_);
-    renderer_iterator.radius_step_ = float(*renderer_radius_step_);
+          // the model name can be specified on the command line.
+          if (mesh_path.empty())
+          {
+            std::remove(mesh_path.c_str());
+            std::cerr << "The mesh path is empty for the object id \"" << *object_id_<< std::endl;
+            return ecto::OK;
+          }
 
-    cv::Mat image, depth, mask;
-    cv::Matx33d R;
-    cv::Vec3d T;
-    cv::Matx33f K;
-    for (size_t i = 0; !renderer_iterator.isDone(); ++i, ++renderer_iterator)
-    {
-      std::stringstream status;
-      status << "Loading images " << (i+1) << "/"
-          << renderer_iterator.n_templates();
-      std::cout << status.str();
+          Renderer3d renderer = Renderer3d(mesh_path);
+          renderer.set_parameters(*renderer_width_, *renderer_height_, *renderer_focal_length_x_,
+                                  *renderer_focal_length_y_, *renderer_near_, *renderer_far_);
 
-      cv::Rect rect;
-      renderer_iterator.render(image, depth, mask, rect);
+          RendererIterator renderer_iterator = RendererIterator(&renderer, *renderer_n_points_);
+          //set the RendererIterator parameters
+          renderer_iterator.angle_step_ = *renderer_angle_step_;
+          renderer_iterator.radius_min_ = float(*renderer_radius_min_);
+          renderer_iterator.radius_max_ = float(*renderer_radius_max_);
+          renderer_iterator.radius_step_ = float(*renderer_radius_step_);
 
-      R = renderer_iterator.R_obj();
-      T = renderer_iterator.T();
-      float distance = renderer_iterator.D_obj() - float(depth.at<ushort>(depth.rows/2.0f, depth.cols/2.0f)/1000.0f);
-      K = cv::Matx33f(float(*renderer_focal_length_x_), 0.0f, float(rect.width)/2.0f, 0.0f, float(*renderer_focal_length_y_), float(rect.height)/2.0f, 0.0f, 0.0f, 1.0f);
+          cv::Mat image, depth, mask;
+          cv::Matx33d R;
+          cv::Vec3d T;
+          cv::Matx33f K;
+          for (size_t i = 0; !renderer_iterator.isDone(); ++i, ++renderer_iterator)
+          {
+            std::stringstream status;
+            status << "Loading images " << (i+1) << "/"
+                   << renderer_iterator.n_templates();
+            std::cout << status.str();
 
-      std::vector<cv::Mat> sources(2);
-      sources[0] = image;
-      sources[1] = depth;
+            cv::Rect rect;
+            renderer_iterator.render(image, depth, mask, rect);
+
+            R = renderer_iterator.R_obj();
+            T = renderer_iterator.T();
+            float distance = renderer_iterator.D_obj() - float(depth.at<ushort>(depth.rows/2.0f, depth.cols/2.0f)/1000.0f);
+            K = cv::Matx33f(float(*renderer_focal_length_x_), 0.0f, float(rect.width)/2.0f, 0.0f, float(*renderer_focal_length_y_), float(rect.height)/2.0f, 0.0f, 0.0f, 1.0f);
+
+            std::vector<cv::Mat> sources(2);
+            sources[0] = image;
+            sources[1] = depth;
 
 #if LINEMOD_VIZ_IMG
-      // Display the rendered image
-      if (*visualize_)
-      {
-        cv::namedWindow("Rendering");
-        if (!image.empty()) {
-          cv::imshow("Rendering", image);
-          cv::waitKey(1);
-        }
-      }
+            // Display the rendered image
+            if (*visualize_)
+            {
+              cv::namedWindow("Rendering");
+              if (!image.empty())
+              {
+                cv::imshow("Rendering", image);
+                cv::waitKey(1);
+              }
+            }
 #endif
 
-      int template_in = detector_->addTemplate(sources, "object1", mask);
-      if (template_in == -1)
-      {
-        // Delete the status
-        for (size_t j = 0; j < status.str().size(); ++j)
-          std::cout << '\b';
-        continue;
+            int template_in = detector_->addTemplate(sources, "object1", mask);
+            if (template_in == -1)
+            {
+              // Delete the status
+              for (size_t j = 0; j < status.str().size(); ++j)
+                std::cout << '\b';
+              continue;
+            }
+
+            // Also store the pose of each template
+            Rs_->push_back(cv::Mat(R));
+            Ts_->push_back(cv::Mat(T));
+            distances_->push_back(distance);
+            Ks_->push_back(cv::Mat(K));
+
+            // Delete the status
+            for (size_t j = 0; j < status.str().size(); ++j)
+              std::cout << '\b';
+          }
+
+          return ecto::OK;
+        }
       }
-
-      // Also store the pose of each template
-      Rs_->push_back(cv::Mat(R));
-      Ts_->push_back(cv::Mat(T));
-      distances_->push_back(distance);
-      Ks_->push_back(cv::Mat(K));
-
-      // Delete the status
-      for (size_t j = 0; j < status.str().size(); ++j)
-        std::cout << '\b';
-    }
-
-      return ecto::OK;
+      else
+      {
+		std::cerr << "Skipping object id \"" << *object_id_ << "\" : no skipping-flag was found" << std::endl;
+        return ecto::OK;
+	  }
     }
 
     /** True or False to output debug image */

@@ -2,6 +2,9 @@ pipeline1:
   type: LinemodTrainer
   module: 'object_recognition_linemod'
   parameters:
+    #Parameter for Kinect v2 in QHD-Mode (HD is to slow and the resolution of SD is to low)  
+    #renderer_width: 960
+    #renderer_height: 540
     # The list of object_ids to analyze
     object_ids: 'all'
     db:
